@@ -32,6 +32,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_SOLVER_DIR = os.path.join(SCRIPT_DIR, "solvers")
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
+if BASE_SOLVER_DIR not in sys.path:
+    sys.path.insert(0, BASE_SOLVER_DIR)
 SOLVER_SOURCES = [
     ("GreedyBFS", "greedy_bfs.py"),
     ("VRPOrToolsSolver", "vrp_ortools.py"),

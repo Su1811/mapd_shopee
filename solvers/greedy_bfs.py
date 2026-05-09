@@ -5,7 +5,7 @@ import time
 from typing import Dict, List, Optional
 
 from env import DIRS, DeliveryEnv, Order, Shipper, delivery_reward, manhattan, move_cost, SEED
-from solver import Solver, bfs_path
+from solvers.solver import Solver, bfs_path
 
 
 class GreedyBFS(Solver):
