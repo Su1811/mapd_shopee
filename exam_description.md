@@ -1,199 +1,227 @@
-# Bài tập lớn: Tối ưu hóa giao hàng đa tác tử trên lưới 2D
+# Bài tập nhóm cuối kì: Tối ưu hóa giao hàng đa tác tử thời gian thực
 
-## 0. Mục tiêu
+Bài toán mô phỏng hệ thống giao hàng thực tế: một đội $C$ shipper hoạt động đồng thời trên bản đồ lưới $N \times N$, nhận và giao các kiện hàng có trọng lượng, mức ưu tiên và deadline khác nhau. Đơn hàng xuất hiện liên tục theo thời gian với tốc độ biến động — bao gồm các đợt cao điểm (surge) tập trung tại một số khu vực đặc biệt (hotspot) — tạo ra nút cổ chai cục bộ. Nhiệm vụ của nhóm là thiết kế thuật toán phân công và điều phối shipper để **tối đa hóa tổng phần thưởng** trong $T$ bước thời gian, cân bằng giữa giao đúng hạn, xử lý đơn ưu tiên cao và chi phí di chuyển.
 
-Bài toán mô phỏng một hệ thống giao hàng trong đó nhiều shipper hoạt động đồng thời trên bản đồ lưới `N × N`. Mỗi shipper cần nhận và giao các đơn hàng có trọng lượng, mức ưu tiên và deadline khác nhau. Đơn hàng xuất hiện theo thời gian, có thể tăng mạnh trong các khung giờ cao điểm (*surge*) và tập trung quanh một số khu vực nóng (*hotspot*).
+> **Thang thời gian:** 1 giờ = 10 đơn vị thời gian &nbsp;|&nbsp; 1 ngày = 240 đơn vị thời gian
 
-Nhiệm vụ của nhóm là thiết kế thuật toán trong `algo.py` để điều phối shipper sao cho **tối đa hóa tổng net reward** trong giới hạn thời gian mô phỏng.
+### Files được cấp
 
-> Thang thời gian: `1 giờ = 10 đơn vị thời gian`, `1 ngày = 240 đơn vị thời gian`.
+- `algo.py` — file baseline (Greedy BFS). **Đây là file duy nhất nhóm cần chỉnh sửa.**
+- `run_test.py` — grader chính thức, chấm điểm tự động. **Không được sửa.**
+- `test_config.txt` — 6 config Phase 1 kèm bản đồ. **Không được sửa.**
+- `demo_notebook.ipynb` — Kaggle notebook gọi terminal, không chứa thuật toán.
 
-## 1. Bộ file được cung cấp
+### Phase 1 — Phát triển và nộp bài
 
-```text
-submission/
-├── algo.py                  # File sinh viên được sửa và nộp
-├── env.py                   # Môi trường, setup, load config, sinh đơn; KHÔNG SỬA
-├── run_test.py              # Grader chính thức; KHÔNG SỬA
-├── test_config.txt          # Config Phase 1 công bố; KHÔNG SỬA
-├── test_config_final.txt    # Config Phase 2 ẩn/release sau
-└── demo_notebook.ipynb      # Notebook Kaggle chỉ gọi terminal
-```
-
-## 2. Cách chạy
-
-Chạy tất cả thuật toán bằng grader chính thức:
+Nhóm nhận `test_config.txt` để phát triển và kiểm tra các thuật toán được yêu cầu:
 
 ```bash
 python run_test.py --config test_config.txt --out results/ --seed 42
 ```
 
-Giới hạn chạy chính thức: **60 phút tổng cho tất cả config**.
+Nộp trên Kaggle: **1 version duy nhất**, vi phạm sẽ bị trừ điểm. Code và báo cáo nộp ở Phase 1 là phiên bản chính thức được đánh giá và chấm.
 
-## 3. Cấu trúc config
+### Phase 2 — Config ẩn
 
-```text
-[CONFIG]
-name = C1
-N = 5
-C = 2
-G = 15
-T = 240
-K_max = 3 3
-W_max = 20.0 20.0
-lambda0 = 0.08
-surge_amplitude = 3.0
-surge_windows = ss1 se1 ss2 se2
-hotspots = hy1 hx1 hy2 hx2
-[MAP]
-1 1 1 1 1
-1 0 0 0 1
-1 0 0 0 1
-1 0 0 0 1
-1 1 1 1 1
-[END]
-```
+Ba ngày trước deadline Phase 2, ban tổ chức release `test_config_phase2.txt` (8 config, bản đồ lớn đến $N = 100$, nhiều đợt surge). Nhóm dùng đúng `algo.py` đã nộp để chạy, lưu ý **TUYỆT ĐỐI KHÔNG** được sửa:
 
-| Trường | Ý nghĩa |
-|---|---|
-| `name` | Tên config |
-| `N` | Kích thước bản đồ `N × N` |
-| `C` | Số shipper |
-| `G` | Số đơn hàng tối đa |
-| `T` | Số bước thời gian mô phỏng |
-| `K_max` | Sức chứa tối đa theo từng shipper |
-| `W_max` | Tải trọng tối đa theo từng shipper |
-| `surge_windows` | Danh sách cặp `start end` của các khung giờ cao điểm |
-| `hotspots` | Danh sách cặp tọa độ `row col` của hotspot |
-| `[MAP]` | Ma trận bản đồ, `0` là ô trống, `1` là vật cản |
+Thời gian chạy tối đa: **60 phút** tổng. Tắt internet khi chạy (`Kaggle Settings → Internet → Off`).
 
-`surge_windows = ss1 se1 ss2 se2` nghĩa là có hai khung cao điểm `[ss1, se1]` và `[ss2, se2]`. `hotspots = hy1 hx1 hy2 hx2` nghĩa là có hai hotspot tại `(hy1, hx1)` và `(hy2, hx2)`. Trong trường hợp không có hai trường này trong config thì sẽ mặc định sẽ lấy Random (đã được cấu hình trong code).
+> **Phase 1:** Các tham số surge (windows, hotspot, amplitude) **không được công bố**. Nhóm tự thiết kế chiến lược ứng phó dựa trên mô tả cơ chế ở mục 1.3.
+>
+> **Phase 2:** Tham số surge và hotspot **được công bố trong `test_config_final.txt`**. Thời điểm và vị trí xuất hiện từng đơn cụ thể vẫn là ngẫu nhiên theo seed.
 
-## 4. Mô hình bài toán
+---
 
-Bản đồ là lưới `N × N`, trong đó `0` là ô trống và `1` là vật cản. Shipper có thể chọn một trong năm hành động di chuyển: `S` đứng yên, `U` lên, `D` xuống, `L` trái, `R` phải.
+## 1. Mô tả bài toán
 
-Mỗi đơn hàng có dạng:
+Cho bản đồ dạng lưới $A$ kích thước $N \times N$, trong đó $A[i][j] = 0$ là ô trống và $A[i][j] = 1$ là ô vật cản, với $1 \leq i, j \leq N$.
 
-```text
-g_i = <sx, sy, ex, ey, et, w, p>
-```
+Tại $t = 0$, có $C$ shipper trên bản đồ. Shipper $i$ có toạ độ $(x_i, y_i)$, tải trọng tối đa $W_{\max}(i)$ và sức chứa $K(i)$ đơn. Không có hai shipper nào đứng cùng ô.
+
+---
+
+### 1.1. Tập hành động
+
+Tại mỗi bước $t$, mỗi shipper thực hiện một cặp hành động $(move, cargo\_op)$:
+
+**$move \in \{S, L, R, U, D\}$** — S: đứng yên; L/R/U/D: di chuyển Tây/Đông/Bắc/Nam một ô.
+
+**$cargo\_op$** — `0`: không làm gì; `1`: nhặt đơn tại ô hiện tại; `2 [id]`: giao đơn `id` đang mang.
+
+Thứ tự trong một bước: **Di chuyển → Nhặt hàng → Giao hàng**.
+
+---
+
+### 1.2. Mô hình đơn hàng
+
+$$g_i = \langle sx_i,\; sy_i,\; ex_i,\; ey_i,\; et_i,\; w_i,\; p_i \rangle$$
 
 | Thuộc tính | Ý nghĩa |
 |---|---|
-| `sx, sy` | Vị trí lấy hàng |
-| `ex, ey` | Vị trí giao hàng |
-| `et` | Deadline |
-| `w` | Trọng lượng đơn hàng |
-| `p` | Mức ưu tiên: `1 = tiêu chuẩn`, `2 = nhanh`, `3 = hỏa tốc` |
+| $sx_i, sy_i$ | Toạ độ điểm lấy hàng |
+| $ex_i, ey_i$ | Toạ độ điểm giao hàng |
+| $et_i$ | Deadline (đơn vị thời gian) — quá hạn bị phạt |
+| $w_i$ | Khối lượng kiện hàng (kg) |
+| $p_i \in \{1,2,3\}$ | Mức ưu tiên: 1 = Tiêu chuẩn, 2 = Nhanh, 3 = Hỏa tốc |
 
-Ràng buộc sức chứa với shipper `i`:
+---
 
-```text
-số đơn đang mang ≤ K_max[i]
-tổng trọng lượng đang mang ≤ W_max[i]
+### 1.3. Mô hình sinh đơn hàng: Surge & Hotspot
+
+Đơn hàng xuất hiện theo **quá trình Poisson không đồng nhất** với tốc độ $\lambda(t)$ thay đổi theo thời gian:
+
+$$\lambda(t) = \begin{cases} \lambda_0 \times (1 + A) & \text{nếu } t \in [t_s,\, t_e] \quad \text{(surge window)} \\ \lambda_0 & \text{ngược lại} \end{cases}$$
+
+| Tham số | Ý nghĩa |
+|---|---|
+| $\lambda_0 \approx G / T$ | Tốc độ sinh đơn nền (đơn/bước thời gian) |
+| $A \geq 0$ | Biên độ surge — hệ số khuếch đại tốc độ trong cao điểm |
+| $[t_s,\, t_e]$ | Surge window — khoảng thời gian xảy ra cao điểm |
+| Hotspot $(r, c)$ | Tâm khu vực đặc biệt: đơn hàng tập trung mạnh gần đây |
+
+**Cơ chế hotspot:** Trong một surge window, với xác suất 70%, điểm lấy hàng $(sx, sy)$ được chọn ngẫu nhiên trong vùng lân cận Manhattan ≤ 3 quanh một hotspot. Xác suất 30% còn lại vẫn chọn ngẫu nhiên toàn bản đồ. Điều này tạo ra **nút cổ chai cục bộ**: nhiều đơn hàng cùng xuất hiện gần nhau trong thời gian ngắn, buộc shipper phải cạnh tranh tài nguyên di chuyển.
+
+**Ví dụ trực quan:**
+
+```
+Bình thường (λ₀ = 0.1):        Trong surge (A = 3.0, λ = 0.4):
+  . . . . .                       . . . . .
+  . . o . .   ← đơn rải đều      . H H H .   ← đơn tập trung
+  . o . . .                       . H ★ H .     quanh hotspot ★
+  . . . o .                       . H H H .
+  . . . . .                       . . . . .
 ```
 
-Nếu shipper đã đầy túi hoặc vượt tải, shipper không được nhặt thêm đơn.
+> **Phase 1:** Các tham số $\lambda_0$, $A$, danh sách surge windows và hotspots **không được công bố** trong Phase 1 nhằm khuyến khích sinh viên thiết kế thuật toán có khả năng thích nghi với môi trường động, thay vì hard-code theo cấu hình biết trước. Trong trường hợp không có hai trường này trong config thì sẽ mặc định sẽ lấy Random (đã được cấu hình trong code).
+>
+> **Phase 2:** Tham số surge và hotspot **được công bố đầy đủ trong phase này.
 
-## 5. Mô hình sinh đơn hàng
+---
 
-Đơn hàng được sinh trong `env.py` theo quá trình Poisson không đồng nhất. Tốc độ sinh đơn tại thời điểm `t`:
+### 1.4. Sức chứa và trọng lượng
 
-```text
-lambda(t) = lambda0 × (1 + surge_amplitude)   nếu t nằm trong surge window
-lambda(t) = lambda0                           nếu ngược lại
+$$\sum_{j \in bag(i)} w_j \leq W_{\max}(i) \qquad |bag(i)| \leq K(i)$$
+
+Khi nhặt hàng tại ô có nhiều đơn, ưu tiên: **hỏa tốc > nhanh > tiêu chuẩn > (chỉ số nhỏ hơn)**.
+
+| Hạng mục | Khối lượng $w$ | Chi phí/bước $rc(w)$ | Sức chứa $K$ |
+|---|---|---|---|
+| Nhẹ | $w \leq 3$ kg | $-0.01$ | 3 đơn |
+| Trung bình | $3 < w \leq 10$ kg | $-0.02$ | 2 đơn |
+| Nặng | $10 < w \leq 30$ kg | $-0.04$ | 1 đơn |
+| Siêu nặng | $w > 30$ kg | $-0.08$ | 1 đơn |
+
+---
+
+### 1.5. Hàm phần thưởng
+
+$$r(i) = \begin{cases} \alpha_p \times r_{base}(i) \times (1 + bonus) & \text{nếu } t_{delivery} \leq et_i \\ \beta_p \times r_{base}(i) \times \max\!\left(0,\; 1 - \dfrac{t_{delivery} - et_i}{T}\right) & \text{nếu } t_{delivery} > et_i \end{cases}$$
+
+$$bonus = \max\!\left(0,\; \frac{et_i - t_{delivery}}{et_i}\right)$$
+
+| Loại dịch vụ | $p$ | $\alpha_p$ | $\beta_p$ |
+|---|---|---|---|
+| Hỏa tốc | 3 | 3.0 | 0.5 |
+| Nhanh | 2 | 2.0 | 0.3 |
+| Tiêu chuẩn | 1 | 1.0 | 0.1 |
+
+Phần thưởng cơ bản $r_{base}(i) = 10 \times f_{weight}$:
+
+| Trọng lượng $w_i$ | $f_{weight}$ | $r_{base}$ |
+|---|---|---|
+| $w \leq 0.2$ kg | 0.4 | 4 |
+| $0.2 < w \leq 3$ kg | 1.0 | 10 |
+| $3 < w \leq 10$ kg | 1.5 | 15 |
+| $10 < w \leq 30$ kg | 2.0 | 20 |
+| $w > 30$ kg | 3.0 | 30 |
+
+---
+
+### 1.6. Chi phí di chuyển
+
+$$rc(i, t) = -0.01 \times \left(1 + \gamma \cdot \frac{W_{carried}(i,t)}{W_{\max}(i)}\right) \qquad [\gamma = 1.0]$$
+
+Chỉ tính khi shipper di chuyển (`L`/`R`/`U`/`D`). Đứng yên (`S`) không mất chi phí.
+
+---
+
+### 1.7. Hàm mục tiêu
+
+$$\max \quad \sum_i \left[ \sum_{j \text{ giao bởi } i} r(j) \;+\; \sum_t rc(i, t) \right]$$
+
+---
+
+### 1.8. Các ràng buộc vận hành
+
+- **Va chạm:** Shipper có chỉ số nhỏ hơn được ưu tiên giữ ô khi tranh chấp.
+- **Thứ tự:** Di chuyển → Nhặt hàng → Giao hàng trong mỗi bước.
+- Shipper không được ra ngoài bản đồ hoặc vào ô vật cản.
+- Cả $W_{\max}$ và $K(i)$ phải được thỏa mãn mọi lúc.
+
+---
+
+## 2. Các phương pháp cần cài đặt
+
+Yêu cầu với **mỗi** phương pháp:
+- Trình bày độ phức tạp thời gian và không gian.
+- Phân tích mức độ tối ưu (optimal / near-optimal / heuristic) và điều kiện đảm bảo.
+- So sánh kết quả định lượng trên các config Phase 1.
+
+### Bắt buộc — 5 điểm/phương pháp
+
+- Greedy BFS
+- VRP + OR-Tools
+
+### Nâng cao — 2.5 điểm/phương pháp
+
+- Ant Colony Optimization (ACO)
+- Multi-Agent Pickup and Delivery với Conflict-Based Search (MAPD-CBS)
+
+## 5. Cách nộp bài
+
+```
+submission/
+├── algo.py                ← thuật toán của nhóm (file duy nhất được sửa)
+├── run_test.py            ← KHÔNG SỬA
+├── test_config.txt        ← KHÔNG SỬA
+├── demo_notebook.ipynb    ← notebook Kaggle submit code
+└── report.pdf             ← báo cáo kỹ thuật
 ```
 
-Trong surge window, nếu có hotspot, điểm lấy hàng có xác suất cao tập trung quanh hotspot: `70%` chọn điểm lấy hàng trong bán kính Manhattan `≤ 3` quanh một hotspot, `30%` chọn ngẫu nhiên toàn bản đồ. Điều này tạo tình huống giống thực tế: trong giờ cao điểm, nhiều đơn xuất hiện dày đặc quanh một khu vực, làm tăng cạnh tranh tài nguyên shipper.
+**Quy tắc Kaggle notebook:**
+- Share đúng 1 version.
+- Notebook chạy hoàn toàn qua lệnh terminal (`%%bash` cells), không chứa thuật toán.
+- Tắt internet khi chạy (`Kaggle Settings → Internet → Off`).
+- Seed cố định `--seed 42`.
 
-## 6. Phase 1 và Phase 2
+---
 
-### Phase 1
+## 6. Thang điểm
 
-Sinh viên nhận `test_config.txt` để phát triển thuật toán. Một số tham số surge/hotspot có thể không xuất hiện trực tiếp trong config công bố nhằm khuyến khích sinh viên thiết kế thuật toán có khả năng thích nghi với môi trường động, thay vì hard-code theo cấu hình biết trước. Điều này giúp đánh giá tốt hơn khả năng quan sát trạng thái mô phỏng, nhận diện dấu hiệu cao điểm qua backlog, mật độ đơn và tỷ lệ trễ, cũng như xây dựng chiến lược phân công linh hoạt.
+| Hạng mục | Điểm | Mô tả |
+|---|---|---|
+| Greedy BFS | 5 | Cài đặt đúng, chạy được trên tất cả config |
+| VRP + OR-Tools | 5 | Cài đặt đúng, chạy được trên tất cả config |
+| ACO | 2.5 | Kết quả tốt hơn Greedy BFS, có phân tích |
+| MAPD-CBS | 2.5 | Cài đặt đúng, xử lý xung đột đa tác tử |
+| Báo cáo kỹ thuật | 5 | Theo yêu cầu mục 6.1 |
+| Ranking (Phase 2) | 10 | Nhóm cao nhất = 10đ, các nhóm khác tỉ lệ tuyến tính |
+| Vấn đáp | 20 | Từng thành viên trình bày và trả lời câu hỏi |
+| **Tổng** | **50** | |
 
-Sinh viên nộp:
+### 6.1. Yêu cầu báo cáo kỹ thuật (5 điểm)
 
-- `algo.py`;
-- Kaggle notebook dùng để chạy lại bài;
-- báo cáo kỹ thuật `report.pdf`.
+- Ghi rõ thành viên (tối đa 3) và phân công đóng góp.
+- Mô tả từng thuật toán: nguyên lý, độ phức tạp thời gian/không gian, mức độ tối ưu.
+- Bảng so sánh kết quả định lượng (net reward, % đơn đúng hạn, thời gian chạy) trên từng config Phase 1.
+- Phân tích trade-off giữa các phương pháp.
+- *(Nâng cao)* Mô tả chiến lược ứng phó surge và hotspot: nhóm phát hiện/xử lý tình huống cao điểm như thế nào?
 
-Không cần đưa notebook vào trong nội dung báo cáo.
+### 6.2. Điểm ranking (10 điểm)
 
-### Phase 2
+Dựa trên tổng net reward của `run_test.py` với config Phase 2. Nhóm cao nhất = 10 điểm, các nhóm còn lại tỉ lệ tuyến tính. Điều kiện: notebook chạy lại được độc lập trong 60 phút.
 
-Giảng viên release `test_config_phase2.txt` trước deadline Phase 2. File này sẽ cung cấp trực tiếp `surge_windows`, `hotspots`. Sinh viên dùng đúng `algo.py` đã nộp để chạy lại trên Kaggle.
+---
 
-## 7. Hàm thưởng và chi phí
-
-Phần thưởng cơ bản theo trọng lượng:
-
-| Trọng lượng | `r_base` |
-|---|---:|
-| `w ≤ 0.2` | `4` |
-| `0.2 < w ≤ 3` | `10` |
-| `3 < w ≤ 10` | `15` |
-| `10 < w ≤ 30` | `20` |
-| `w > 30` | `30` |
-
-Hệ số ưu tiên:
-
-| Mức ưu tiên | Ý nghĩa | `alpha_p` đúng hạn | `beta_p` trễ hạn |
-|---|---|---:|---:|
-| `1` | Tiêu chuẩn | `1.0` | `0.1` |
-| `2` | Nhanh | `2.0` | `0.3` |
-| `3` | Hỏa tốc | `3.0` | `0.5` |
-
-Nếu giao đúng hạn:
-
-```text
-reward = alpha_p × r_base × (1 + bonus)
-bonus = max(0, (deadline - delivery_time) / deadline)
-```
-
-Nếu giao trễ:
-
-```text
-reward = beta_p × r_base × max(0, 1 - (delivery_time - deadline) / T)
-```
-
-Mỗi bước di chuyển thật sự `L/R/U/D` bị trừ:
-
-```text
-move_cost = -0.01 × (1 + W_carried / W_max)
-```
-
-Đứng yên `S` không mất chi phí.
-
-## 8. Hàm mục tiêu
-
-Thuật toán cần tối đa hóa:
-
-```text
-net_reward = total_delivery_reward + total_move_cost
-```
-
-Kết quả chính thức lấy từ `run_test.py`:
-
-```text
-TỔNG ĐIỂM RANKING = tổng net_reward trên toàn bộ config
-```
-
-## 9. Yêu cầu thuật toán và báo cáo
-
-Tối thiểu, nhóm cần cài đặt và phân tích Greedy BFS hoặc cải tiến tương đương, VRP/OR-Tools hoặc heuristic gom cụm tương đương nếu môi trường Kaggle cho phép, và các chiến lược nâng cao nếu muốn tăng điểm ranking như ưu tiên đơn hỏa tốc, gom đơn theo cụm không gian, điều phối shipper đến gần hotspot trước surge, cache đường đi A*, xử lý đơn nặng bằng shipper có `W_max` lớn, tránh nhiều shipper tranh cùng một đơn.
-
-Với mỗi phương pháp trong báo cáo, cần nêu ý tưởng, giả mã hoặc mô tả luồng xử lý, độ phức tạp thời gian, độ phức tạp bộ nhớ, mức độ tối ưu, và bảng kết quả trên Phase 1.
-
-## 10. Quy định Kaggle notebook
-
-Notebook chỉ dùng để chạy lại code, không chứa thuật toán chính. Ví dụ cell:
-
-```bash
-%%bash
-python run_test.py --config test_config.txt --out results --seed 42
-python run_test.py --config test_config_final.txt --out results_final --seed 42
-```
-
-Yêu cầu: dùng seed cố định `42`, không sửa `env.py`, `run_test.py`, config trong lúc chấm, và chỉ chỉnh sửa đúng file thuật toán `algo.py` theo quy định đề bài.
+*Nhóm tối đa 3 thành viên. Chúc các nhóm thực hiện tốt!*
