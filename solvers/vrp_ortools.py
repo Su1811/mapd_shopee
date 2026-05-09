@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from env import DeliveryEnv, Order
-from solver import Solver, default_result
+from solvers.solver import Solver, default_result
 
 
 class VRPOrToolsSolver(Solver):

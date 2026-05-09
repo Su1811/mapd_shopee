@@ -30,6 +30,8 @@ MAX_TOTAL_SECONDS = 3600
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_SOLVER_DIR = os.path.join(SCRIPT_DIR, "solvers")
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 SOLVER_SOURCES = [
     ("GreedyBFS", "greedy_bfs.py"),
     ("VRPOrToolsSolver", "vrp_ortools.py"),
