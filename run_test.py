@@ -10,7 +10,7 @@ Kiến trúc:
 
 Cách dùng:
     python run_test.py --config test_config.txt --out results/
-    python run_test.py --config test_config_phase2.txt --out results_phase2/
+    python run_test.py --config test_config_final.txt --out results_final/
 """
 
 from __future__ import annotations
@@ -28,21 +28,33 @@ from env import DeliveryEnv, SEED, load_config
 
 MAX_TOTAL_SECONDS = 3600
 
-SOLVER_CLASS_NAMES = [
-    "GreedyBFS",
-    "VRPOrToolsSolver",
-    "ACOSolver",
-    "MAPDCBSSolver",
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_SOLVER_DIR = os.path.join(SCRIPT_DIR, "solvers")
+SOLVER_SOURCES = [
+    ("GreedyBFS", "greedy_bfs.py"),
+    ("VRPOrToolsSolver", "vrp_ortools.py"),
+    ("ACOSolver", "aco_solver.py"),
+    ("MAPDCBSSolver", "mapd_cbs_solver.py"),
 ]
 
 
-def load_algo():
-    spec = importlib.util.spec_from_file_location("algo", "algo.py")
+def load_solver_class(class_name: str, file_name: str):
+    path = os.path.join(BASE_SOLVER_DIR, file_name)
+    if not os.path.exists(path):
+        sys.exit(f"[ERROR] Không tìm thấy {file_name} trong thư mục hiện tại.")
+    spec = importlib.util.spec_from_file_location(class_name, path)
     if spec is None or spec.loader is None:
-        sys.exit("[ERROR] Không tìm thấy algo.py trong thư mục hiện tại.")
+        sys.exit(f"[ERROR] Không thể load module {file_name}.")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod
+    solver_cls = getattr(mod, class_name, None)
+    if solver_cls is None:
+        sys.exit(f"[ERROR] Không tìm thấy lớp {class_name} trong {file_name}.")
+    return solver_cls
+
+
+def load_solver_classes():
+    return [(name, load_solver_class(name, file_name)) for name, file_name in SOLVER_SOURCES]
 
 
 def score_result(result: dict) -> float:
@@ -78,15 +90,6 @@ def _run_solver(solver_cls: Any, env: DeliveryEnv) -> dict:
     return solver.run()
 
 
-def _collect_solver_classes(algo) -> list[tuple[str, Any]]:
-    solvers = []
-    for class_name in SOLVER_CLASS_NAMES:
-        solver_cls = getattr(algo, class_name, None)
-        if solver_cls is not None:
-            solvers.append((class_name, solver_cls))
-    return solvers
-
-
 def main():
     parser = argparse.ArgumentParser(description="run_test.py — Test runner chấm điểm")
     parser.add_argument("--config", required=True, help="Đường dẫn file test_config.txt")
@@ -97,11 +100,10 @@ def main():
     rng = random.Random(args.seed)
     os.makedirs(args.out, exist_ok=True)
 
-    print("Đang load algo.py ...")
-    algo = load_algo()
-    solver_classes = _collect_solver_classes(algo)
+    print("Đang load solver modules ...")
+    solver_classes = load_solver_classes()
     if not solver_classes:
-        sys.exit("[ERROR] Không tìm thấy solver nào trong algo.py.")
+        sys.exit("[ERROR] Không tìm thấy solver nào.")
     print("Load thành công.")
     print("Solver sẽ chạy:", ", ".join(name for name, _ in solver_classes), "\n")
 
