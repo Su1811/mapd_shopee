@@ -6,7 +6,6 @@ Bài toán mô phỏng hệ thống giao hàng thực tế: một đội $C$ shi
 
 ### Files được cấp
 
-- `algo.py` — file baseline (Greedy BFS). **Đây là file duy nhất nhóm cần chỉnh sửa.**
 - `run_test.py` — grader chính thức, chấm điểm tự động. **Không được sửa.**
 - `test_config.txt` — 6 config Phase 1 kèm bản đồ. **Không được sửa.**
 - `demo_notebook.ipynb` — Kaggle notebook gọi terminal, không chứa thuật toán.
@@ -19,17 +18,11 @@ Nhóm nhận `test_config.txt` để phát triển và kiểm tra các thuật t
 python run_test.py --config test_config.txt --out results/ --seed 42
 ```
 
-Nộp trên Kaggle: **1 version duy nhất**, vi phạm sẽ bị trừ điểm. Code và báo cáo nộp ở Phase 1 là phiên bản chính thức được đánh giá và chấm.
+Code và báo cáo nộp ở Phase 1 là phiên bản chính thức được đánh giá và chấm. Các nhóm cài đặt các thuật toán trong thư mục `solvers`, upload thư mục lên trên Kaggle dạng Dataset và để public vào hôm deadline của Phase 1 để giảng viên có thể xem. Nhóm sẽ không được sửa notebook này, các bạn chỉ được thay đổi dòng copy từ thư mục private của nhóm vào thư mục `solvers` (xem Notebook chấm mẫu để biết thêm chi tiết). Nộp trên Kaggle: **1 version duy nhất**, vi phạm sẽ bị trừ điểm. 
 
-### Phase 2 — Config ẩn
+### Phase 2 — Config dùng để Ranking
 
-Ba ngày trước deadline Phase 2, ban tổ chức release `test_config_phase2.txt` (8 config, bản đồ lớn đến $N = 100$, nhiều đợt surge). Nhóm dùng đúng `algo.py` đã nộp để chạy, lưu ý **TUYỆT ĐỐI KHÔNG** được sửa:
-
-Thời gian chạy tối đa: **60 phút** tổng. Tắt internet khi chạy (`Kaggle Settings → Internet → Off`).
-
-> **Phase 1:** Các tham số surge (windows, hotspot, amplitude) **không được công bố**. Nhóm tự thiết kế chiến lược ứng phó dựa trên mô tả cơ chế ở mục 1.3.
->
-> **Phase 2:** Tham số surge và hotspot **được công bố trong `test_config_final.txt`**. Thời điểm và vị trí xuất hiện từng đơn cụ thể vẫn là ngẫu nhiên theo seed.
+Ba ngày trước deadline Phase 2, giảng viên sẽ công bố file config test dùng để ranking, sẽ được cập nhật trên chính file config cũ để chấm. Các notebook đã nộp sẽ không được thay đổi, vi phạm sẽ bị trừ điểm. 
 
 ---
 
@@ -39,7 +32,6 @@ Cho bản đồ dạng lưới $A$ kích thước $N \times N$, trong đó $A[i]
 
 Tại $t = 0$, có $C$ shipper trên bản đồ. Shipper $i$ có toạ độ $(x_i, y_i)$, tải trọng tối đa $W_{\max}(i)$ và sức chứa $K(i)$ đơn. Không có hai shipper nào đứng cùng ô.
 
----
 
 ### 1.1. Tập hành động
 
@@ -51,7 +43,6 @@ Tại mỗi bước $t$, mỗi shipper thực hiện một cặp hành động $
 
 Thứ tự trong một bước: **Di chuyển → Nhặt hàng → Giao hàng**.
 
----
 
 ### 1.2. Mô hình đơn hàng
 
@@ -65,7 +56,6 @@ $$g_i = \langle sx_i,\; sy_i,\; ex_i,\; ey_i,\; et_i,\; w_i,\; p_i \rangle$$
 | $w_i$ | Khối lượng kiện hàng (kg) |
 | $p_i \in \{1,2,3\}$ | Mức ưu tiên: 1 = Tiêu chuẩn, 2 = Nhanh, 3 = Hỏa tốc |
 
----
 
 ### 1.3. Mô hình sinh đơn hàng: Surge & Hotspot
 
@@ -95,9 +85,8 @@ Bình thường (λ₀ = 0.1):        Trong surge (A = 3.0, λ = 0.4):
 
 > **Phase 1:** Các tham số $\lambda_0$, $A$, danh sách surge windows và hotspots **không được công bố** trong Phase 1 nhằm khuyến khích sinh viên thiết kế thuật toán có khả năng thích nghi với môi trường động, thay vì hard-code theo cấu hình biết trước. Trong trường hợp không có hai trường này trong config thì sẽ mặc định sẽ lấy Random (đã được cấu hình trong code).
 >
-> **Phase 2:** Tham số surge và hotspot **được công bố đầy đủ trong phase này.
+> **Phase 2:** Tham số surge và hotspot được công bố đầy đủ trong phase này.
 
----
 
 ### 1.4. Sức chứa và trọng lượng
 
@@ -112,7 +101,6 @@ Khi nhặt hàng tại ô có nhiều đơn, ưu tiên: **hỏa tốc > nhanh > 
 | Nặng | $10 < w \leq 30$ kg | $-0.04$ | 1 đơn |
 | Siêu nặng | $w > 30$ kg | $-0.08$ | 1 đơn |
 
----
 
 ### 1.5. Hàm phần thưởng
 
@@ -136,7 +124,6 @@ Phần thưởng cơ bản $r_{base}(i) = 10 \times f_{weight}$:
 | $10 < w \leq 30$ kg | 2.0 | 20 |
 | $w > 30$ kg | 3.0 | 30 |
 
----
 
 ### 1.6. Chi phí di chuyển
 
@@ -144,13 +131,11 @@ $$rc(i, t) = -0.01 \times \left(1 + \gamma \cdot \frac{W_{carried}(i,t)}{W_{\max
 
 Chỉ tính khi shipper di chuyển (`L`/`R`/`U`/`D`). Đứng yên (`S`) không mất chi phí.
 
----
 
 ### 1.7. Hàm mục tiêu
 
 $$\max \quad \sum_i \left[ \sum_{j \text{ giao bởi } i} r(j) \;+\; \sum_t rc(i, t) \right]$$
 
----
 
 ### 1.8. Các ràng buộc vận hành
 
@@ -159,7 +144,6 @@ $$\max \quad \sum_i \left[ \sum_{j \text{ giao bởi } i} r(j) \;+\; \sum_t rc(i
 - Shipper không được ra ngoài bản đồ hoặc vào ô vật cản.
 - Cả $W_{\max}$ và $K(i)$ phải được thỏa mãn mọi lúc.
 
----
 
 ## 2. Các phương pháp cần cài đặt
 
@@ -182,7 +166,7 @@ Yêu cầu với **mỗi** phương pháp:
 
 ```
 submission/
-├── algo.py                ← thuật toán của nhóm (file duy nhất được sửa)
+├── solvers/               ← thư mục chứa code các thuật toán của nhóm (phần duy nhất được sửa)
 ├── run_test.py            ← KHÔNG SỬA
 ├── test_config.txt        ← KHÔNG SỬA
 ├── demo_notebook.ipynb    ← notebook Kaggle submit code
@@ -192,10 +176,8 @@ submission/
 **Quy tắc Kaggle notebook:**
 - Share đúng 1 version.
 - Notebook chạy hoàn toàn qua lệnh terminal (`%%bash` cells), không chứa thuật toán.
-- Tắt internet khi chạy (`Kaggle Settings → Internet → Off`).
 - Seed cố định `--seed 42`.
 
----
 
 ## 6. Thang điểm
 
@@ -221,7 +203,15 @@ submission/
 ### 6.2. Điểm ranking (10 điểm)
 
 Dựa trên tổng net reward của `run_test.py` với config Phase 2. Nhóm cao nhất = 10 điểm, các nhóm còn lại tỉ lệ tuyến tính. Điều kiện: notebook chạy lại được độc lập trong 60 phút.
+Chú ý trong khi chạy lại, file config sẽ được giảng viên cập nhật trực tiếp vào file `test_config.txt`.
+Do đó, các nhóm chỉ cần run lại notebook (**không được chỉnh sửa**) và gửi lại kết quả để thực hiện việc ranking.
 
----
+### Hạn chế:
+- Thời gian chạy tối đa: **60 phút** tổng. 
+- Không được dùng internet khi chạy.
+- Không được sử dụng thêm thư viện ngoài khi chạy (ví dụ lệnh pip install sẽ không được thực hiện), các file trong thư mục solvers nếu không phải là code thì phải ghi rõ quá trình và nộp kèm các bước sinh ra các file đấy.
+
+Chú ý: Nếu ở phase 2 vi phạm các điều kiện hoặc code không chạy được thì điểm sẽ được tính là 0/10. Nhóm có thể lựa chọn phương pháp tốt nhất để nộp (để tiết kiệm thời gian), hoặc chương trình sẽ tính điểm theo phương pháp có kết quả tốt nhất.
+
 
 *Nhóm tối đa 3 thành viên. Chúc các nhóm thực hiện tốt!*

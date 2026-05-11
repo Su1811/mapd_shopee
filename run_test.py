@@ -107,6 +107,7 @@ def main():
     print("Đang load solver modules ...")
     solver_classes = load_solver_classes()
     if not solver_classes:
+        
         sys.exit("[ERROR] Không tìm thấy solver nào.")
     print("Load thành công.")
     print("Solver sẽ chạy:", ", ".join(name for name, _ in solver_classes), "\n")
