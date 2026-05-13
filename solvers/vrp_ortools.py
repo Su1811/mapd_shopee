@@ -1,16 +1,13 @@
-from __future__ import annotations
-from typing import List, Optional
-
-from env import DeliveryEnv, Order
-from solvers.solver import Solver, default_result
+from common_online import OnlineGraphPolicySolver
 
 
-class VRPOrToolsSolver(Solver):
-    """Sinh viên cài đặt thuật toán VRP + OR-Tools tại đây."""
+class VRPOrToolsSolver(OnlineGraphPolicySolver):
+    """
+    Online dynamic VRP-style solver.
 
-    def __init__(self, env_or_cfg, grid: Optional[List[List[int]]] = None, orders: Optional[List[Order]] = None):
-        super().__init__(env_or_cfg, grid, orders)
+    Không giả định biết toàn bộ orders từ đầu. Ở mỗi step, nó thực hiện insertion
+    heuristic trên các đơn đã reveal. Tên file/class giữ nguyên để tương thích grader.
+    """
 
-    def run(self) -> dict:
-        # TODO: chuyển nghiệm VRP thành mô phỏng từng bước và trả về dict kết quả.
-        return default_result("VRP + OR-Tools", self.cfg, self.orders)
+    def __init__(self, env):
+        super().__init__(env, policy_name="vrp")

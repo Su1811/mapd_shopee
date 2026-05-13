@@ -1,16 +1,13 @@
-from __future__ import annotations
-from typing import List, Optional
-
-from env import DeliveryEnv, Order
-from solvers.solver import Solver, default_result
+from common_online import OnlineGraphPolicySolver
 
 
-class MAPDCBSSolver(Solver):
-    """Sinh viên cài đặt MAPD với Conflict-Based Search tại đây."""
+class MAPDCBSSolver(OnlineGraphPolicySolver):
+    """
+    Online MAPD-CBS-style solver.
 
-    def __init__(self, env_or_cfg, grid: Optional[List[List[int]]] = None, orders: Optional[List[Order]] = None):
-        super().__init__(env_or_cfg, grid, orders)
+    Dùng BFS trên đồ thị lưới và phạt xung đột mục tiêu gần nhau khi phân công.
+    Collision thật vẫn được môi trường xử lý theo ưu tiên shipper id nhỏ hơn.
+    """
 
-    def run(self) -> dict:
-        # TODO: sinh task, chạy CBS, mô phỏng và trả về dict kết quả.
-        return default_result("MAPD-CBS", self.cfg, self.orders)
+    def __init__(self, env):
+        super().__init__(env, policy_name="cbs")

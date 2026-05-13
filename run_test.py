@@ -1,25 +1,21 @@
 """
-run_test.py — Test Runner (KHÔNG SỬA FILE NÀY)
-================================================
-Script cố định dùng để chấm điểm tự động.
+run_test.py — Online Graph/RL Test Runner
+========================================
 
-Kiến trúc:
-- env.py chịu trách nhiệm load config và sinh đơn hàng/surge/hotspot.
-- algo.py chứa các thuật toán của sinh viên.
-- Runner chạy tất cả solver được khai báo trong SOLVER_CLASS_NAMES.
-
-Cách dùng:
-    python run_test.py --config test_config.txt --out results/
-    python run_test.py --config test_config_final.txt --out results_final/
+Grader dùng DeliveryEnv dạng stateful simulator:
+- Mỗi solver được chạy trên một env mới có cùng seed/config.
+- Env không sinh trước toàn bộ đơn hàng; đơn chỉ được sinh/reveal tại thời điểm t.
+- Chỉ G là tổng số đơn cố định từ đầu.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import importlib.util
 import json
 import os
-import random
 import sys
 import time
 from typing import Any
@@ -34,6 +30,7 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 if BASE_SOLVER_DIR not in sys.path:
     sys.path.insert(0, BASE_SOLVER_DIR)
+
 SOLVER_SOURCES = [
     ("GreedyBFS", "greedy_bfs.py"),
     ("VRPOrToolsSolver", "vrp_ortools.py"),
@@ -45,7 +42,7 @@ SOLVER_SOURCES = [
 def load_solver_class(class_name: str, file_name: str):
     path = os.path.join(BASE_SOLVER_DIR, file_name)
     if not os.path.exists(path):
-        sys.exit(f"[ERROR] Không tìm thấy {file_name} trong thư mục hiện tại.")
+        sys.exit(f"[ERROR] Không tìm thấy {file_name} trong thư mục solvers.")
     spec = importlib.util.spec_from_file_location(class_name, path)
     if spec is None or spec.loader is None:
         sys.exit(f"[ERROR] Không thể load module {file_name}.")
@@ -65,11 +62,13 @@ def score_result(result: dict) -> float:
     return float(result.get("net_reward", 0.0))
 
 
-def _error_result(method: str, cfg: dict, total_orders: int, error: str) -> dict:
+def _error_result(method: str, cfg: dict, error: str) -> dict:
+    total_orders = int(cfg.get("G", 0))
     return {
         "method": method,
         "config_name": cfg.get("name", "unknown"),
         "total_orders": total_orders,
+        "orders_generated": 0,
         "delivered": 0,
         "on_time": 0,
         "late": 0,
@@ -86,33 +85,36 @@ def _error_result(method: str, cfg: dict, total_orders: int, error: str) -> dict
     }
 
 
-def _run_solver(solver_cls: Any, env: DeliveryEnv) -> dict:
-    try:
-        solver = solver_cls(env)
-    except TypeError:
-        solver = solver_cls(env.cfg, env.grid, env.clone_orders())
+def _stable_config_seed(config_name: str, base_seed: int) -> int:
+    """Tạo seed riêng cho từng config, ổn định và không phụ thuộc thứ tự chạy solver."""
+    digest = hashlib.md5(f"{base_seed}:{config_name}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16)
+
+
+def _run_solver(solver_cls: Any, cfg: dict, seed: int) -> dict:
+    # Mỗi solver nhận một bản sao cfg và một env mới.
+    # Nhờ vậy state/active_orders/orders_generated của solver trước không thể leak sang solver sau.
+    env_cfg = copy.deepcopy(cfg)
+    env = DeliveryEnv(env_cfg, seed=seed)
+    solver = solver_cls(env)
     return solver.run()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="run_test.py — Test runner chấm điểm")
+    parser = argparse.ArgumentParser(description="Online MAPD graph/RL grader")
     parser.add_argument("--config", required=True, help="Đường dẫn file test_config.txt")
     parser.add_argument("--out", default="results", help="Thư mục lưu kết quả")
     parser.add_argument("--seed", type=int, default=SEED)
     args = parser.parse_args()
 
-    rng = random.Random(args.seed)
     os.makedirs(args.out, exist_ok=True)
 
     print("Đang load solver modules ...")
     solver_classes = load_solver_classes()
-    if not solver_classes:
-        
-        sys.exit("[ERROR] Không tìm thấy solver nào.")
     print("Load thành công.")
     print("Solver sẽ chạy:", ", ".join(name for name, _ in solver_classes), "\n")
 
-    print(f"Đọc config bằng env.py: {args.config}")
+    print(f"Đọc config: {args.config}")
     configs = load_config(args.config)
     print(f"Tìm thấy {len(configs)} config.\n")
 
@@ -128,22 +130,23 @@ def main():
             break
 
         print(f"[{name}] N={cfg['N']} C={cfg['C']} G={cfg['G']} T={cfg['T']}  (còn {remaining / 60:.1f} phút)")
-        env = DeliveryEnv(cfg, rng)
-        print(f"  Đơn hàng sinh ra bởi env.py: {len(env.orders)}")
+        print("  Chế độ online: chỉ G được biết trước; từng đơn được sinh/reveal trong step t.")
+        config_seed = _stable_config_seed(str(name), args.seed)
 
         cfg_results = []
         for solver_name, solver_cls in solver_classes:
             solver_start = time.time()
             try:
-                result = _run_solver(solver_cls, env)
+                result = _run_solver(solver_cls, cfg, config_seed)
             except Exception as e:
-                result = _error_result(solver_name, cfg, len(env.orders), str(e))
+                result = _error_result(solver_name, cfg, str(e))
 
             wall = time.time() - solver_start
             result["wall_sec"] = round(wall, 2)
             result.setdefault("config_name", name)
             result.setdefault("method", solver_name)
-            result.setdefault("total_orders", len(env.orders))
+            result.setdefault("total_orders", cfg["G"])
+            result.setdefault("orders_generated", cfg["G"])
             result.setdefault("delivered", 0)
             result.setdefault("on_time", 0)
             result.setdefault("late", 0)
@@ -159,7 +162,7 @@ def main():
             print(
                 f"    Giao/Tổng: {result['delivered']}/{result['total_orders']}  "
                 f"đúng hạn={result['on_time']}  trễ={result['late']}  bỏ lỡ={result['missed']}  "
-                f"t={wall:.2f}s"
+                f"generated={result.get('orders_generated', 0)}  t={wall:.2f}s"
             )
 
             cfg_results.append(result)
@@ -168,7 +171,8 @@ def main():
         print("")
         config_payload = {
             "config_name": name,
-            "orders_generated": len(env.orders),
+            "orders_total_fixed": cfg["G"],
+            "online_generation": True,
             "results": cfg_results,
         }
         results_by_config.append(config_payload)
@@ -182,15 +186,15 @@ def main():
         for method in methods
     }
 
-    print("=" * 95)
+    print("=" * 100)
     print(f"{'Config':<10} {'Method':<28} {'Net Reward':>12} {'%Giao':>8} {'%Đúng hạn':>10} {'t(s)':>7}")
-    print("-" * 95)
+    print("-" * 100)
     for r in all_results:
         print(
             f"{r['config_name']:<10} {r['method']:<28} {r['net_reward']:>12.2f} "
             f"{r['delivery_rate']:>7.1f}% {r['on_time_rate']:>9.1f}% {r.get('wall_sec', 0):>7.1f}"
         )
-    print("=" * 95)
+    print("=" * 100)
     print("TỔNG ĐIỂM THEO PHƯƠNG PHÁP:")
     for method, score in total_score_by_method.items():
         print(f"- {method}: {score:.2f}")
@@ -199,6 +203,7 @@ def main():
     summary = {
         "config_file": args.config,
         "seed": args.seed,
+        "online_generation": True,
         "total_elapsed": round(total_elapsed, 2),
         "total_score_by_method": total_score_by_method,
         "results_by_config": results_by_config,
