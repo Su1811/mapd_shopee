@@ -210,9 +210,9 @@ class GreedyBFS(Solver):
         goal = (order.ex, order.ey)
         move, next_position = self._move_towards(shipper, goal)
 
-        # Với env đã hỗ trợ giao nhiều đơn, op="deliver" nghĩa là giao tất cả
-        # đơn trong bag có đích tại ô hiện tại sau khi di chuyển.
-        return (move, "deliver") if next_position == goal else (move, 0)
+        # Với env chuẩn, op=2 nghĩa là giao tất cả đơn trong bag
+        # có đích tại ô hiện tại sau khi di chuyển.
+        return (move, 2) if next_position == goal else (move, 0)
 
     def _pickup_action(self, shipper: Shipper, order: Order) -> Action:
         goal = (order.sx, order.sy)

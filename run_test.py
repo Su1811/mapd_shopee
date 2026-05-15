@@ -1,7 +1,4 @@
 """
-run_test.py — Online Graph/RL Test Runner
-========================================
-
 Grader dùng DeliveryEnv dạng stateful simulator:
 - Mỗi solver được chạy trên một env mới có cùng seed/config.
 - Env không sinh trước toàn bộ đơn hàng; đơn chỉ được sinh/reveal tại thời điểm t.

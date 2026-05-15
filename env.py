@@ -214,36 +214,22 @@ def parse_actions(actions: Any, n_shippers: int) -> Dict[int, Any]:
     return {}
 
 
-def extract_delivery_ids(op: Any) -> List[int]:
+def extract_delivery_ids(op: Any) -> Optional[List[int]]:
     """
-    Trích danh sách id đơn cần giao từ cargo_op. Hỗ trợ giao nhiều đơn cùng bước.
+    Trích danh sách id đơn cần giao từ cargo_op.
 
-    Định dạng được chấp nhận:
-      ("deliver", 7)          -> [7]        # một đơn
-      ("deliver", [7, 8])     -> [7, 8]     # nhiều đơn dạng list
-      ("deliver", 7, 8)       -> [7, 8]     # nhiều đơn dạng varargs
-      "2 7"                   -> [7]        # chuỗi một đơn
-      "2 7 8"                 -> [7, 8]     # chuỗi nhiều đơn
-      [("deliver",7),("deliver",8)] -> [7, 8]  # list các op đơn lẻ
+    Quy ước đề bài bản chuẩn:
+      op = 2  -> thực hiện thao tác giao hàng tại vị trí hiện tại.
+
+    Vì đề cho phép giao nhiều đơn cùng địa điểm, op = 2 không chỉ định id đơn.
+    Environment sẽ tự giao tất cả đơn trong túi của shipper có destination trùng
+    với ô hiện tại sau pha di chuyển.
+
+    Trả về:
+      []    nếu đây là thao tác giao tất cả đơn hợp lệ tại ô hiện tại;
+      None  nếu op không phải thao tác giao.
     """
-    if op == "deliver":
-        return []
-    if isinstance(op, str) and op.startswith("2 "):
-        return [int(x) for x in op.split()[1:]]
-    if isinstance(op, (tuple, list)) and op:
-        if op[0] == "deliver":
-            rest = op[1:]
-            if len(rest) == 1 and isinstance(rest[0], (list, tuple)):
-                return [int(x) for x in rest[0]]
-            return [int(x) for x in rest]
-        # list of ("deliver", id) ops
-        ids = []
-        for item in op:
-            if isinstance(item, (tuple, list)) and len(item) == 2 and item[0] == "deliver":
-                ids.append(int(item[1]))
-        if ids:
-            return ids
-    return []
+    return [] if op == 2 else None
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +531,7 @@ class DeliveryEnv:
                 shipper.pickup_best(self.orders)
                 continue
             delivery_ids = extract_delivery_ids(op)
-            if op == "deliver" or delivery_ids:
+            if delivery_ids is not None:
                 step_reward += self._deliver_many(shipper, delivery_ids)
 
         self.total_reward += step_reward
