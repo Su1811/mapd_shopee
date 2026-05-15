@@ -102,13 +102,27 @@ def main():
     parser.add_argument("--config", required=True, help="Đường dẫn file test_config.txt")
     parser.add_argument("--out", default="results", help="Thư mục lưu kết quả")
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--method", default="all", help="Phương pháp chạy: 'all' để chạy tất cả, hoặc tên phương pháp cụ thể (GreedyBFS, VRPOrToolsSolver, ACOSolver, MAPDCBSSolver)")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
 
     print("Đang load solver modules ...")
-    solver_classes = load_solver_classes()
+    all_solver_classes = load_solver_classes()
     print("Load thành công.")
+    
+    # Chọn phương pháp
+    if args.method == "all":
+        solver_classes = all_solver_classes
+        print("Chạy tất cả phương pháp:", ", ".join(name for name, _ in solver_classes))
+    else:
+        # Tìm phương pháp cụ thể
+        solver_classes = [(name, cls) for name, cls in all_solver_classes if name == args.method]
+        if not solver_classes:
+            available = [name for name, _ in all_solver_classes]
+            sys.exit(f"[ERROR] Phương pháp '{args.method}' không tồn tại. Các phương pháp có sẵn: {', '.join(available)}")
+        print(f"Chạy phương pháp: {args.method}")
+    
     print("Solver sẽ chạy:", ", ".join(name for name, _ in solver_classes), "\n")
 
     print(f"Đọc config: {args.config}")

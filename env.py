@@ -1,5 +1,5 @@
 """
-env.py — Online MAPD Graph/RL Environment
+env.py — Online MAPD Graph Environment
 =========================================
 
 Môi trường online cho bài toán Multi-Agent Package Delivery.
@@ -12,10 +12,10 @@ Cấu trúc module:
   Data classes       — Order, Shipper (state only)
   Grid helpers       — is_valid_cell, next_pos, valid_next_pos, manhattan
   Reward helpers     — r_base, delivery_reward, move_cost
-  Action helpers     — parse_action, parse_actions, extract_delivery_ids
+  Action helpers     — parse_action, parse_actions, is_delivery_op
   Simulation helpers — _apply_moves, _order_rate, _init_shippers, _start_positions
   Config I/O         — load_config, parse_grid
-  DeliveryEnv        — stateful simulator (public API + 4 private stateful methods)
+  DeliveryEnv        — stateful simulator
 """
 
 from __future__ import annotations
@@ -91,15 +91,24 @@ class Shipper:
         return (order.sx, order.sy) == self.position and self.can_carry(order, orders)
 
     def pickup_best(self, orders: Dict[int, Order]) -> Optional[int]:
-        """Nhặt đơn ưu tiên cao nhất tại ô hiện tại (hỏa tốc > nhanh > tiêu chuẩn > id nhỏ)."""
+        """
+        Nhặt đúng một đơn tốt nhất tại ô hiện tại.
+
+        Thứ tự ưu tiên:
+          1. ưu tiên cao hơn trước;
+          2. deadline sớm hơn trước;
+          3. id nhỏ hơn trước.
+        """
         candidates = [o for o in orders.values() if self.can_pickup(o, orders)]
         if not candidates:
             return None
+
         order = min(candidates, key=lambda o: (-o.p, o.et, o.id))
         order.picked = True
         order.carrier = self.id
         self.bag.append(order.id)
         return order.id
+
 
     def can_deliver(self, order: Order) -> bool:
         """True nếu shipper đang mang order và đứng đúng điểm giao."""
@@ -182,8 +191,8 @@ def parse_action(action: Any) -> Tuple[str, Any]:
     Định dạng đầu vào được chấp nhận:
       None                      -> ("S", 0)
       "L" / "U" / ...           -> (move, 0)
-      ("R", 1)                  -> ("R", 1)           # pickup
-      ("D", ("deliver", 3))     -> ("D", ("deliver", 3))
+      ("R", 1)                  -> ("R", 1)
+      ("D", (2, 3))     -> ("D", (2, 3))
     """
     if action is None:
         return "S", 0
@@ -214,22 +223,10 @@ def parse_actions(actions: Any, n_shippers: int) -> Dict[int, Any]:
     return {}
 
 
-def extract_delivery_ids(op: Any) -> Optional[List[int]]:
-    """
-    Trích danh sách id đơn cần giao từ cargo_op.
-
-    Quy ước đề bài bản chuẩn:
-      op = 2  -> thực hiện thao tác giao hàng tại vị trí hiện tại.
-
-    Vì đề cho phép giao nhiều đơn cùng địa điểm, op = 2 không chỉ định id đơn.
-    Environment sẽ tự giao tất cả đơn trong túi của shipper có destination trùng
-    với ô hiện tại sau pha di chuyển.
-
-    Trả về:
-      []    nếu đây là thao tác giao tất cả đơn hợp lệ tại ô hiện tại;
-      None  nếu op không phải thao tác giao.
-    """
-    return [] if op == 2 else None
+def is_delivery_op(op: Any) -> bool:
+    """True nếu cargo_op yêu cầu giao hàng.
+    Với env chuẩn, op=2 nghĩa là giao tất cả đơn trong bag có đích tại ô hiện tại sau khi di chuyển."""
+    return op == 2
 
 
 # ---------------------------------------------------------------------------
@@ -527,12 +524,11 @@ class DeliveryEnv:
 
         for shipper in sorted(self.shippers, key=lambda s: s.id):
             _, op = parsed.get(shipper.id, ("S", 0))
-            if op == 1 or op == "pickup":
+            if op == 1:
                 shipper.pickup_best(self.orders)
                 continue
-            delivery_ids = extract_delivery_ids(op)
-            if delivery_ids is not None:
-                step_reward += self._deliver_many(shipper, delivery_ids)
+            if is_delivery_op(op):
+                step_reward += self._deliver_many(shipper)
 
         self.total_reward += step_reward
         self.t += 1
@@ -618,16 +614,15 @@ class DeliveryEnv:
         self.next_order_id += 1
         return Order(oid, src[0], src[1], dst[0], dst[1], deadline, weight, priority, self.t)
 
-    def _deliver_many(self, shipper: Shipper, order_ids: List[int]) -> float:
-        """Giao nhiều đơn trong cùng timestep.
+    def _deliver_many(self, shipper: Shipper) -> float:
+        """Giao tất cả đơn hợp lệ tại vị trí hiện tại trong cùng timestep.
 
-        Nếu order_ids rỗng, giao tất cả đơn trong bag đang có destination đúng
-        tại vị trí hiện tại của shipper. Shipper.deliver() vẫn là lớp kiểm tra
-        cuối cùng, nên không thể giao nhầm đơn khác địa điểm.
+        cargo_op = 2 không chỉ định id đơn. Vì vậy env duyệt toàn bộ bag của
+        shipper và để Shipper.deliver() kiểm tra điều kiện cuối cùng:
+        đơn phải đang được shipper mang và destination phải đúng vị trí hiện tại.
         """
-        ids = list(order_ids) if order_ids else list(shipper.bag)
         total = 0.0
-        for oid in list(ids):
+        for oid in list(shipper.bag):
             total += self._deliver(shipper, oid)
         return total
 

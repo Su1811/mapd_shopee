@@ -24,13 +24,6 @@ class GreedyBFS(Solver):
     Solver chỉ cài phần policy:
     - chọn đơn cần giao/nhặt;
     - tìm đường bằng BFS trên grid hiện tại.
-
-    Các logic mô phỏng có sẵn trong env/Shipper được tái sử dụng:
-    - is_valid_cell(pos, grid)
-    - valid_next_pos(pos, move, grid)
-    - shipper.position
-    - shipper.can_carry(order, orders)
-    - env.step(...) xử lý move/pickup/deliver thật sự.
     """
 
     method_name = "GreedyBFS"
@@ -80,9 +73,6 @@ class GreedyBFS(Solver):
     def _distance(self, start: Position, goal: Position) -> int:
         """
         Khoảng cách đường đi ngắn nhất trên grid có vật cản.
-
-        Không trùng với env.manhattan(): manhattan chỉ là khoảng cách heuristic,
-        không xét obstacle/bottleneck. Greedy BFS cần khoảng cách BFS thật.
         """
         if start == goal:
             return 0
@@ -140,9 +130,6 @@ class GreedyBFS(Solver):
     def _select_delivery(self, shipper: Shipper, orders: Dict[int, Order]) -> Optional[Order]:
         """
         Chọn đơn đang mang để đi giao.
-
-        Không trùng env: env chỉ mô phỏng giao khi đã có action,
-        còn đây là policy của Greedy để quyết định mục tiêu tiếp theo.
         """
         carried_orders = [
             orders[oid]
@@ -199,8 +186,6 @@ class GreedyBFS(Solver):
     def _move_towards(self, shipper: Shipper, goal: Position) -> Tuple[Move, Position]:
         """
         Lấy bước đi kế tiếp và vị trí dự kiến sau bước đó.
-
-        Không cần _position_after riêng vì env đã có valid_next_pos().
         """
         move = self._next_move(shipper.position, goal)
         next_position = valid_next_pos(shipper.position, move, self.grid)
@@ -218,8 +203,8 @@ class GreedyBFS(Solver):
         goal = (order.sx, order.sy)
         move, next_position = self._move_towards(shipper, goal)
 
-        # Env/Shipper.pickup_best() quyết định đơn được nhặt thật sự tại ô hiện tại.
-        return (move, "pickup") if next_position == goal else (move, 0)
+        # cargo_op = 1: env/Shipper.pickup_best() sẽ nhặt một đơn tốt nhất tại ô hiện tại.
+        return (move, 1) if next_position == goal else (move, 0)
 
     def _decide_actions(self, obs: dict) -> Dict[int, Action]:
         orders: Dict[int, Order] = obs["orders"]
