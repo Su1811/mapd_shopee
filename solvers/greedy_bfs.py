@@ -197,6 +197,11 @@ class GreedyBFS(Solver):
     # Policy: tạo action
     # ------------------------------------------------------------------
     def _move_towards(self, shipper: Shipper, goal: Position) -> Tuple[Move, Position]:
+        """
+        Lấy bước đi kế tiếp và vị trí dự kiến sau bước đó.
+
+        Không cần _position_after riêng vì env đã có valid_next_pos().
+        """
         move = self._next_move(shipper.position, goal)
         next_position = valid_next_pos(shipper.position, move, self.grid)
         return move, next_position

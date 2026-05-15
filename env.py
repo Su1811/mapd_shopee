@@ -214,54 +214,36 @@ def parse_actions(actions: Any, n_shippers: int) -> Dict[int, Any]:
     return {}
 
 
-def extract_delivery_ids(op: Any) -> Optional[List[int]]:
+def extract_delivery_ids(op: Any) -> List[int]:
     """
-    Trích danh sách id đơn cần giao từ cargo_op.
-
-    Return convention:
-      - None: không có thao tác giao hàng.
-      - []  : giao tất cả đơn trong túi có đích đúng ô hiện tại.
-      - [id1, id2, ...]: thử giao các đơn có id tương ứng.
+    Trích danh sách id đơn cần giao từ cargo_op. Hỗ trợ giao nhiều đơn cùng bước.
 
     Định dạng được chấp nhận:
-      "deliver" / "deliver_all" / ("deliver",) -> []
-      ("deliver", 7)                            -> [7]
-      ("deliver", [7, 8])                       -> [7, 8]
-      ("deliver", 7, 8)                         -> [7, 8]
-      "2"                                       -> []
-      "2 7"                                     -> [7]
-      "2 7 8"                                   -> [7, 8]
-      [("deliver", 7), ("deliver", 8)]          -> [7, 8]
+      ("deliver", 7)          -> [7]        # một đơn
+      ("deliver", [7, 8])     -> [7, 8]     # nhiều đơn dạng list
+      ("deliver", 7, 8)       -> [7, 8]     # nhiều đơn dạng varargs
+      "2 7"                   -> [7]        # chuỗi một đơn
+      "2 7 8"                 -> [7, 8]     # chuỗi nhiều đơn
+      [("deliver",7),("deliver",8)] -> [7, 8]  # list các op đơn lẻ
     """
-    if isinstance(op, str):
-        if op in {"deliver", "deliver_all", "2"}:
-            return []
-        if op.startswith("2 "):
-            return [int(x) for x in op.split()[1:]]
-
+    if op == "deliver":
+        return []
+    if isinstance(op, str) and op.startswith("2 "):
+        return [int(x) for x in op.split()[1:]]
     if isinstance(op, (tuple, list)) and op:
-        if op[0] in {"deliver", "deliver_all"}:
+        if op[0] == "deliver":
             rest = op[1:]
-            if not rest or (len(rest) == 1 and rest[0] == "all"):
-                return []
-            if len(rest) == 1 and isinstance(rest[0], (list, tuple, set)):
+            if len(rest) == 1 and isinstance(rest[0], (list, tuple)):
                 return [int(x) for x in rest[0]]
             return [int(x) for x in rest]
-
-        ids: List[int] = []
+        # list of ("deliver", id) ops
+        ids = []
         for item in op:
-            if isinstance(item, (tuple, list)) and item:
-                if item[0] in {"deliver", "deliver_all"}:
-                    if len(item) == 1 or (len(item) == 2 and item[1] == "all"):
-                        return []
-                    if len(item) == 2 and isinstance(item[1], (list, tuple, set)):
-                        ids.extend(int(x) for x in item[1])
-                    else:
-                        ids.extend(int(x) for x in item[1:])
+            if isinstance(item, (tuple, list)) and len(item) == 2 and item[0] == "deliver":
+                ids.append(int(item[1]))
         if ids:
             return ids
-
-    return None
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +459,7 @@ class DeliveryEnv:
         _reveal_orders()    — sinh đơn mới vào self.orders
         _new_order_count()  — tính số đơn cần sinh tại bước hiện tại
         _sample_order()     — tạo một Order ngẫu nhiên, tăng next_order_id
-        _deliver()          — giao 1 đơn + cập nhật delivered/on_time/late
-        _deliver_many()     — giao nhiều đơn cùng ô/timestep
+        _deliver()          — giao hàng + cập nhật delivered/on_time/late
     """
 
     def __init__(self, cfg: dict, seed: int = SEED, rng: Optional[random.Random] = None):
@@ -563,11 +544,9 @@ class DeliveryEnv:
             if op == 1 or op == "pickup":
                 shipper.pickup_best(self.orders)
                 continue
-
             delivery_ids = extract_delivery_ids(op)
-            if delivery_ids is None:
-                continue
-            step_reward += self._deliver_many(shipper, delivery_ids)
+            if op == "deliver" or delivery_ids:
+                step_reward += self._deliver_many(shipper, delivery_ids)
 
         self.total_reward += step_reward
         self.t += 1
@@ -653,6 +632,19 @@ class DeliveryEnv:
         self.next_order_id += 1
         return Order(oid, src[0], src[1], dst[0], dst[1], deadline, weight, priority, self.t)
 
+    def _deliver_many(self, shipper: Shipper, order_ids: List[int]) -> float:
+        """Giao nhiều đơn trong cùng timestep.
+
+        Nếu order_ids rỗng, giao tất cả đơn trong bag đang có destination đúng
+        tại vị trí hiện tại của shipper. Shipper.deliver() vẫn là lớp kiểm tra
+        cuối cùng, nên không thể giao nhầm đơn khác địa điểm.
+        """
+        ids = list(order_ids) if order_ids else list(shipper.bag)
+        total = 0.0
+        for oid in list(ids):
+            total += self._deliver(shipper, oid)
+        return total
+
     def _deliver(self, shipper: Shipper, oid: int) -> float:
         """Giao đơn oid bởi shipper; cập nhật self.delivered / on_time / late."""
         order = self.orders.get(oid)
@@ -666,20 +658,3 @@ class DeliveryEnv:
         if was_on_time: self.on_time += 1
         else:           self.late += 1
         return reward
-
-    def _deliver_many(self, shipper: Shipper, order_ids: List[int]) -> float:
-        """
-        Giao nhiều đơn trong cùng timestep.
-
-        Nếu order_ids rỗng, env hiểu là giao tất cả đơn trong túi có destination
-        trùng với vị trí hiện tại của shipper. Mỗi đơn được tính reward riêng
-        tại cùng thời điểm self.t. Shipper.deliver() vẫn kiểm tra đúng ô đích,
-        nên các id không hợp lệ hoặc không ở cùng địa điểm sẽ tự bị bỏ qua.
-        """
-        if not order_ids:
-            order_ids = list(shipper.bag)
-
-        total = 0.0
-        for oid in list(order_ids):
-            total += self._deliver(shipper, oid)
-        return total

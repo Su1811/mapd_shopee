@@ -8,6 +8,11 @@ from env import DeliveryEnv, Order
 class Solver:
     """
     Base class cho solver.
+
+    Chỉ hỗ trợ môi trường online/RL chính thức:
+        Solver(env)
+
+    Trong đó env là DeliveryEnv do run_test.py khởi tạo riêng cho từng solver.
     """
 
     def __init__(self, env: DeliveryEnv):
