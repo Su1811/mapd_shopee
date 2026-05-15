@@ -2,170 +2,257 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
-from env import DeliveryEnv, Order, Shipper
-from solvers.solver import Solver, default_result
+from env import DeliveryEnv, Order, Shipper, is_valid_cell, valid_next_pos
+from solvers.solver import Solver
 
 
 Move = str
-Pos = Tuple[int, int]
-DIRS: List[Tuple[Move, int, int]] = [
-    ("U", -1, 0),
-    ("D", 1, 0),
-    ("L", 0, -1),
-    ("R", 0, 1),
-]
+Position = Tuple[int, int]
+Action = Tuple[Move, object]
+
+INF = 10**9
+
+MOVES: Tuple[Move, ...] = ("U", "D", "L", "R")
 
 
 class GreedyBFS(Solver):
     """
-    Greedy BFS baseline cơ bản.
+    Greedy BFS baseline cho Online MAPD.
+
+    Solver chỉ cài phần policy:
+    - chọn đơn cần giao/nhặt;
+    - tìm đường bằng BFS trên grid hiện tại.
+
+    Các logic mô phỏng có sẵn trong env/Shipper được tái sử dụng:
+    - is_valid_cell(pos, grid)
+    - valid_next_pos(pos, move, grid)
+    - shipper.position
+    - shipper.can_carry(order, orders)
+    - env.step(...) xử lý move/pickup/deliver thật sự.
     """
 
-    def __init__(self, env_or_cfg, grid: Optional[List[List[int]]] = None, orders: Optional[List[Order]] = None):
-        super().__init__(env_or_cfg, grid, orders)
+    method_name = "GreedyBFS"
 
-    def _inside_free(self, r: int, c: int) -> bool:
-        n = len(self.grid)
-        return 0 <= r < n and 0 <= c < n and self.grid[r][c] == 0
+    def __init__(self, env: DeliveryEnv):
+        super().__init__(env)
+        self._distance_cache: Dict[Tuple[Position, Position], int] = {}
+        self._next_move_cache: Dict[Tuple[Position, Position], Move] = {}
 
-    def _bfs_next_move(self, start: Pos, goal: Pos) -> Move:
-        if start == goal:
-            return "S"
+    # ------------------------------------------------------------------
+    # BFS utilities
+    # ------------------------------------------------------------------
+    def _neighbors(self, pos: Position) -> Iterable[Tuple[Move, Position]]:
+        """Liệt kê các ô kề hợp lệ bằng valid_next_pos() của env."""
+        for move in MOVES:
+            nxt = valid_next_pos(pos, move, self.grid)
+            if nxt != pos:
+                yield move, nxt
 
-        q = deque([start])
-        parent: Dict[Pos, Tuple[Optional[Pos], Move]] = {start: (None, "S")}
+    def _bfs_parents(
+        self,
+        start: Position,
+        goal: Position,
+    ) -> Optional[Dict[Position, Tuple[Optional[Position], Move]]]:
+        """Chạy BFS và lưu parent để lấy khoảng cách/next move."""
+        if not is_valid_cell(start, self.grid) or not is_valid_cell(goal, self.grid):
+            return None
 
-        while q:
-            r, c = q.popleft()
-            if (r, c) == goal:
-                break
-            for mv, dr, dc in DIRS:
-                nr, nc = r + dr, c + dc
-                nxt = (nr, nc)
-                if self._inside_free(nr, nc) and nxt not in parent:
-                    parent[nxt] = ((r, c), mv)
-                    q.append(nxt)
+        queue: deque[Position] = deque([start])
+        parent: Dict[Position, Tuple[Optional[Position], Move]] = {
+            start: (None, "S")
+        }
 
-        if goal not in parent:
-            return "S"
+        while queue:
+            current = queue.popleft()
+            if current == goal:
+                return parent
 
-        cur = goal
-        while parent[cur][0] != start:
-            prev = parent[cur][0]
-            if prev is None:
-                return "S"
-            cur = prev
-        return parent[cur][1]
+            for move, nxt in self._neighbors(current):
+                if nxt in parent:
+                    continue
+                parent[nxt] = (current, move)
+                queue.append(nxt)
 
-    def _bfs_distance(self, start: Pos, goal: Pos) -> int:
+        return None
+
+    def _distance(self, start: Position, goal: Position) -> int:
+        """
+        Khoảng cách đường đi ngắn nhất trên grid có vật cản.
+
+        Không trùng với env.manhattan(): manhattan chỉ là khoảng cách heuristic,
+        không xét obstacle/bottleneck. Greedy BFS cần khoảng cách BFS thật.
+        """
         if start == goal:
             return 0
-        q = deque([(start, 0)])
-        seen = {start}
-        while q:
-            (r, c), d = q.popleft()
-            for _, dr, dc in DIRS:
-                nr, nc = r + dr, c + dc
-                nxt = (nr, nc)
-                if not self._inside_free(nr, nc) or nxt in seen:
-                    continue
-                if nxt == goal:
-                    return d + 1
-                seen.add(nxt)
-                q.append((nxt, d + 1))
-        return 10**9
 
-    def _next_pos_after_move(self, pos: Pos, move: Move) -> Pos:
-        for mv, dr, dc in DIRS:
-            if mv == move:
-                nr, nc = pos[0] + dr, pos[1] + dc
-                return (nr, nc) if self._inside_free(nr, nc) else pos
-        return pos
+        key = (start, goal)
+        if key in self._distance_cache:
+            return self._distance_cache[key]
 
-    def _can_pickup_from_obs(self, shipper: Shipper, order: Order, orders: Dict[int, Order]) -> bool:
-        if order.picked or order.delivered:
-            return False
-        current_weight = sum(orders[oid].w for oid in shipper.bag if oid in orders)
-        return len(shipper.bag) < shipper.K_max and current_weight + order.w <= shipper.W_max
+        parent = self._bfs_parents(start, goal)
+        if parent is None or goal not in parent:
+            self._distance_cache[key] = INF
+            return INF
 
-    def _choose_delivery_order(self, shipper: Shipper, orders: Dict[int, Order]) -> Optional[Order]:
-        best_order = None
-        best_dist = 10**9
-        for oid in shipper.bag:
-            order = orders.get(oid)
-            if order is None or order.delivered:
-                continue
-            dist = self._bfs_distance((shipper.r, shipper.c), (order.ex, order.ey))
-            if dist < best_dist:
-                best_dist = dist
-                best_order = order
-        return best_order
+        distance = 0
+        current = goal
+        while current != start:
+            previous, _ = parent[current]
+            if previous is None:
+                self._distance_cache[key] = INF
+                return INF
+            current = previous
+            distance += 1
 
-    def _choose_pickup_order(
+        self._distance_cache[key] = distance
+        return distance
+
+    def _next_move(self, start: Position, goal: Position) -> Move:
+        """Bước đi đầu tiên trên đường BFS từ start tới goal."""
+        if start == goal:
+            return "S"
+
+        key = (start, goal)
+        if key in self._next_move_cache:
+            return self._next_move_cache[key]
+
+        parent = self._bfs_parents(start, goal)
+        if parent is None or goal not in parent:
+            self._next_move_cache[key] = "S"
+            return "S"
+
+        current = goal
+        while True:
+            previous, move = parent[current]
+            if previous is None:
+                self._next_move_cache[key] = "S"
+                return "S"
+            if previous == start:
+                self._next_move_cache[key] = move
+                return move
+            current = previous
+
+    # ------------------------------------------------------------------
+    # Policy: chọn đơn
+    # ------------------------------------------------------------------
+    def _select_delivery(self, shipper: Shipper, orders: Dict[int, Order]) -> Optional[Order]:
+        """
+        Chọn đơn đang mang để đi giao.
+
+        Không trùng env: env chỉ mô phỏng giao khi đã có action,
+        còn đây là policy của Greedy để quyết định mục tiêu tiếp theo.
+        """
+        carried_orders = [
+            orders[oid]
+            for oid in shipper.bag
+            if oid in orders and not orders[oid].delivered
+        ]
+        if not carried_orders:
+            return None
+
+        return min(
+            carried_orders,
+            key=lambda order: (
+                self._distance(shipper.position, (order.ex, order.ey)),
+                order.et,
+                -order.p,
+                order.id,
+            ),
+        )
+
+    def _select_pickup(
         self,
         shipper: Shipper,
         orders: Dict[int, Order],
-        reserved_orders: set[int],
+        reserved_order_ids: set[int],
     ) -> Optional[Order]:
-        best_order = None
-        best_key = None
-        for order in orders.values():
-            if order.id in reserved_orders:
-                continue
-            if not self._can_pickup_from_obs(shipper, order, orders):
-                continue
-            dist = self._bfs_distance((shipper.r, shipper.c), (order.sx, order.sy))
-            if dist >= 10**9:
-                continue
-            # Cơ bản: ưu tiên khoảng cách gần, sau đó đơn ưu tiên cao, deadline sớm.
-            key = (dist, -order.p, order.et, order.id)
-            if best_key is None or key < best_key:
-                best_key = key
-                best_order = order
-        return best_order
+        """Chọn đơn chưa nhặt có pickup gần nhất và shipper còn khả năng chở."""
+        candidates: List[Order] = []
 
-    def _decide_actions(self, obs: dict) -> Dict[int, Tuple[Move, object]]:
+        for order in orders.values():
+            if order.id in reserved_order_ids:
+                continue
+            if not shipper.can_carry(order, orders):
+                continue
+            if self._distance(shipper.position, (order.sx, order.sy)) >= INF:
+                continue
+            candidates.append(order)
+
+        if not candidates:
+            return None
+
+        return min(
+            candidates,
+            key=lambda order: (
+                self._distance(shipper.position, (order.sx, order.sy)),
+                -order.p,
+                order.et,
+                order.id,
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Policy: tạo action
+    # ------------------------------------------------------------------
+    def _move_towards(self, shipper: Shipper, goal: Position) -> Tuple[Move, Position]:
+        move = self._next_move(shipper.position, goal)
+        next_position = valid_next_pos(shipper.position, move, self.grid)
+        return move, next_position
+
+    def _delivery_action(self, shipper: Shipper, order: Order) -> Action:
+        goal = (order.ex, order.ey)
+        move, next_position = self._move_towards(shipper, goal)
+
+        # Với env đã hỗ trợ giao nhiều đơn, op="deliver" nghĩa là giao tất cả
+        # đơn trong bag có đích tại ô hiện tại sau khi di chuyển.
+        return (move, "deliver") if next_position == goal else (move, 0)
+
+    def _pickup_action(self, shipper: Shipper, order: Order) -> Action:
+        goal = (order.sx, order.sy)
+        move, next_position = self._move_towards(shipper, goal)
+
+        # Env/Shipper.pickup_best() quyết định đơn được nhặt thật sự tại ô hiện tại.
+        return (move, "pickup") if next_position == goal else (move, 0)
+
+    def _decide_actions(self, obs: dict) -> Dict[int, Action]:
         orders: Dict[int, Order] = obs["orders"]
         shippers: List[Shipper] = obs["shippers"]
-        actions: Dict[int, Tuple[Move, object]] = {}
+
+        actions: Dict[int, Action] = {}
         reserved_pickups: set[int] = set()
 
-        for shipper in shippers:
-            pos = (shipper.r, shipper.c)
-
-            delivery_order = self._choose_delivery_order(shipper, orders)
+        for shipper in sorted(shippers, key=lambda s: s.id):
+            delivery_order = self._select_delivery(shipper, orders)
             if delivery_order is not None:
-                goal = (delivery_order.ex, delivery_order.ey)
-                move = self._bfs_next_move(pos, goal)
-                next_pos = self._next_pos_after_move(pos, move)
-                op: object = ("deliver", delivery_order.id) if next_pos == goal else 0
-                actions[shipper.id] = (move, op)
+                actions[shipper.id] = self._delivery_action(shipper, delivery_order)
                 continue
 
-            pickup_order = self._choose_pickup_order(shipper, orders, reserved_pickups)
+            pickup_order = self._select_pickup(shipper, orders, reserved_pickups)
             if pickup_order is not None:
                 reserved_pickups.add(pickup_order.id)
-                goal = (pickup_order.sx, pickup_order.sy)
-                move = self._bfs_next_move(pos, goal)
-                next_pos = self._next_pos_after_move(pos, move)
-                op = "pickup" if next_pos == goal else 0
-                actions[shipper.id] = (move, op)
+                actions[shipper.id] = self._pickup_action(shipper, pickup_order)
                 continue
 
             actions[shipper.id] = ("S", 0)
 
         return actions
 
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
     def run(self) -> dict:
-        if self.env is None:
-            return default_result("GreedyBFS", self.cfg, self.orders)
-
-        start = time.time()
+        start_time = time.time()
         obs = self.env.reset()
-        done = obs.get("done", False)
-        while not done:
+
+        while not obs.get("done", False):
             actions = self._decide_actions(obs)
             obs, _, done, _ = self.env.step(actions)
-        return self.env.result("GreedyBFS", elapsed_sec=time.time() - start)
+            if done:
+                break
+
+        return self.env.result(
+            self.method_name,
+            elapsed_sec=time.time() - start_time,
+        )
